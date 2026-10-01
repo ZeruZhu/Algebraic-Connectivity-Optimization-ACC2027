@@ -34,11 +34,12 @@ For the numerical package versions recorded on SeaWulf, use Python 3.11 or
 ```bash
 python -m pip install torch==2.3.0 --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements-paper.txt
-python -m pip install -e ".[test,analysis]"
+python -m pip install -c requirements-paper.txt -e ".[test,analysis]"
 ```
 
-The original run used Linux and Python 3.12.3. Local timings depend on hardware
-and numerical libraries. Exact graph hashes can also differ when floating-point
+The constraints flag keeps plotting dependencies from upgrading the pinned
+numerical stack. The original run used Linux and Python 3.12.3. Local timings
+depend on hardware and numerical libraries. Exact graph hashes can also differ when floating-point
 ties are resolved differently across platforms.
 
 ## Rebuild the paper tables and figures
