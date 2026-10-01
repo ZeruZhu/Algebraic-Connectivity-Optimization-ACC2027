@@ -1,0 +1,8 @@
+# Numerical stack recorded for Seawulf job 2202156 (Python 3.12.3, Linux).
+# Install the CPU PyTorch wheel separately when required by your platform.
+numpy==1.26.4
+scipy==1.14.0
+networkx==3.3
+torch==2.3.0
+PyYAML>=6,<7
+threadpoolctl>=3.1,<4

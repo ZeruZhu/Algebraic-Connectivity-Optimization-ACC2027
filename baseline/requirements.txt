@@ -1,5 +1,3 @@
 numpy>=1.24
 scipy>=1.10
-torch>=2.1
-matplotlib>=3.7
-cvxpy>=1.8
+# Optional SDP/OA solvers: install cvxpy plus licensed mosek/gurobipy.

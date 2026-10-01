@@ -1,10 +1,5 @@
-from graph_design.config import DesignConfig
-from graph_design.solver import HybridGraphDesigner
-from graph_design.types import DesignProblem, DesignResult
+"""Envelope and accelerated Cayley backbones for BB-RL."""
+from .config import DesignConfig
+from .types import DesignProblem, BackboneCandidate
 
-__all__ = [
-    "DesignConfig",
-    "DesignProblem",
-    "DesignResult",
-    "HybridGraphDesigner",
-]
+__all__ = ["DesignConfig", "DesignProblem", "BackboneCandidate"]

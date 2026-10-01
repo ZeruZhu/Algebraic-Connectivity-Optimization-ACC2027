@@ -1,31 +1,30 @@
 from __future__ import annotations
 
-from collections import deque
 import random
 from dataclasses import dataclass
+import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
 from .backbone_init import default_path_init_metadata, normalize_init_metadata
 from .curriculum import CurriculumScheduler
-from .features.full import (
-    build_candidate_features as build_candidate_features_full,
-    build_global_features as build_global_features_full,
-    build_node_features as build_node_features_full,
-)
-from .features.lite import (
-    build_candidate_features as build_candidate_features_lite,
+from .features.structural import (
     build_edge_index,
-    build_global_features as build_global_features_lite,
-    build_node_features as build_node_features_lite,
+    build_global_features as build_global_features,
+    build_node_features as build_node_features,
+)
+from .features.candidates import (
+    build_candidate_features as build_candidate_features,
 )
 from .graph_math import (
+    algebraic_connectivity,
     build_path_adjacency,
     edge_count,
     m_target_from_rho,
     normalized_density,
     spectral_features,
+    truncated_all_pairs_shortest_path,
 )
 
 InitAdjBuilder = Callable[[int, float, int], Tuple[np.ndarray, Dict[str, Any]]]
@@ -42,6 +41,10 @@ class GraphObservation:
     n: int
     rho_target: float
     rho_current: float
+    candidate_pool_size_raw: int = 0
+    candidate_pool_size_selected: int = 0
+    time_obs_build_sec: float = 0.0
+    time_candidate_sec: float = 0.0
 
     def to_dict(self) -> Dict:
         return {
@@ -54,6 +57,10 @@ class GraphObservation:
             "n": self.n,
             "rho_target": self.rho_target,
             "rho_current": self.rho_current,
+            "candidate_pool_size_raw": self.candidate_pool_size_raw,
+            "candidate_pool_size_selected": self.candidate_pool_size_selected,
+            "time_obs_build_sec": self.time_obs_build_sec,
+            "time_candidate_sec": self.time_candidate_sec,
         }
 
     @staticmethod
@@ -68,6 +75,10 @@ class GraphObservation:
             n=int(data["n"]),
             rho_target=float(data["rho_target"]),
             rho_current=float(data["rho_current"]),
+            candidate_pool_size_raw=int(data.get("candidate_pool_size_raw", 0)),
+            candidate_pool_size_selected=int(data.get("candidate_pool_size_selected", 0)),
+            time_obs_build_sec=float(data.get("time_obs_build_sec", 0.0)),
+            time_candidate_sec=float(data.get("time_candidate_sec", 0.0)),
         )
 
 
@@ -80,9 +91,13 @@ class GraphEnv:
         dist_cap: int,
         terminal_bonus_coef: float,
         seed: int,
-        rl_variant: str = "full",
+        rl_variant: str = "lite_v3",
         compute_spectral_each_step: bool = True,
         incremental_observation: bool = True,
+        lite_v3_node_budget: int = 32,
+        lite_v3_pair_budget: int = 96,
+        lite_v3_pair_budget_min: int = 32,
+        inference_only: bool = False,
     ):
         self.env_id = env_id
         self.scheduler = scheduler
@@ -92,8 +107,14 @@ class GraphEnv:
         self.rl_variant = str(rl_variant)
         self.compute_spectral_each_step = bool(compute_spectral_each_step)
         self.incremental_observation = bool(incremental_observation)
-        if self.rl_variant not in {"full", "lite_v2"}:
+        self.inference_only = bool(inference_only)
+        if self.inference_only and (self.rl_variant != "lite_v3" or self.compute_spectral_each_step):
+            raise ValueError("inference_only requires lite_v3 with per-step spectral evaluation disabled")
+        if self.rl_variant not in {"lite_v3"}:
             raise ValueError(f"Unsupported rl_variant: {self.rl_variant}")
+        self.lite_v3_node_budget = int(lite_v3_node_budget)
+        self.lite_v3_pair_budget = int(lite_v3_pair_budget)
+        self.lite_v3_pair_budget_min = int(lite_v3_pair_budget_min)
 
         self.py_rng = random.Random(seed + 10007 * env_id)
         self.np_rng = np.random.RandomState(seed + 20011 * env_id)
@@ -121,22 +142,10 @@ class GraphEnv:
         self._episode_init_metadata: Dict[str, Any] = default_path_init_metadata(0)
 
     def _compute_all_pairs_shortest_path(self, adj: np.ndarray) -> np.ndarray:
-        n = adj.shape[0]
-        dist = np.full((n, n), fill_value=n + 1, dtype=np.int64)
-        for src in range(n):
-            dist[src, src] = 0
-            q = deque([src])
-            while q:
-                u = q.popleft()
-                du = dist[src, u]
-                for v in np.where(adj[u] > 0)[0]:
-                    if dist[src, v] > du + 1:
-                        dist[src, v] = du + 1
-                        q.append(int(v))
-        return dist
+        return truncated_all_pairs_shortest_path(adj, len(adj) + 1)
 
     def _initialize_incremental_state(self) -> None:
-        if self.adj is None:
+        if self.adj is None or (self.inference_only and edge_count(self.adj) >= self.m_target):
             self._deg_cache = None
             self._a2_counts = None
             self._triangles_per_node = None
@@ -150,12 +159,12 @@ class GraphEnv:
 
         n = self.adj.shape[0]
         adj_bool = self.adj > 0
-        adj_i = adj_bool.astype(np.int64, copy=False)
+        adj_f = adj_bool.astype(np.float64)
 
         self._deg_cache = np.sum(adj_bool, axis=1, dtype=np.float64)
-        self._a2_counts = adj_i @ adj_i
-        # Each triangle touching node i contributes 2 to (A^3)_{ii}.
-        self._triangles_per_node = (np.diag(adj_i @ adj_i @ adj_i).astype(np.float64) / 2.0)
+        # Binary dot products are integer-exact here and use the float BLAS kernel.
+        self._a2_counts = (adj_f @ adj_f).astype(np.int64)
+        self._triangles_per_node = np.sum(self._a2_counts * adj_bool, axis=1, dtype=np.float64) / 2.0
         self._dist_matrix = self._compute_all_pairs_shortest_path(self.adj)
 
         rows, cols = np.triu_indices(n, k=1)
@@ -265,8 +274,7 @@ class GraphEnv:
             self.episode_len = 0
             if self.incremental_observation:
                 self._initialize_incremental_state()
-            lambda2, lambda3, phi2, phi3 = spectral_features(self.adj)
-            return self._build_observation(spectral_cache=(lambda2, lambda3, phi2, phi3))
+            return self._initial_observation()
 
         self.adj = build_path_adjacency(self.n)
         self._episode_init_metadata = normalize_init_metadata(
@@ -278,8 +286,34 @@ class GraphEnv:
         self.episode_len = 0
         if self.incremental_observation:
             self._initialize_incremental_state()
+        return self._initial_observation()
+
+    def _initial_observation(self) -> GraphObservation:
+        if self.inference_only:
+            self.current_lambda2 = algebraic_connectivity(self.adj)
+            self.current_lambda3 = 0.0
+            self.current_phi2 = self.current_phi3 = None
+            if edge_count(self.adj) >= self.m_target:
+                return self._terminal_observation()
+            return self._build_observation()
         lambda2, lambda3, phi2, phi3 = spectral_features(self.adj)
         return self._build_observation(spectral_cache=(lambda2, lambda3, phi2, phi3))
+
+    def _terminal_observation(self) -> GraphObservation:
+        """Inference consumers only need the terminal score, not another action state."""
+        rho = normalized_density(self.n, edge_count(self.adj))
+        return GraphObservation(
+            node_features=np.zeros((self.n, 3), dtype=np.float32),
+            edge_index=np.zeros((2, 0), dtype=np.int64),
+            candidate_pairs=np.zeros((0, 2), dtype=np.int64),
+            pair_features=np.zeros((0, 5), dtype=np.float32),
+            global_features=build_global_features(
+                n=self.n, rho_target=self.rho_target,
+                rho_current=rho,
+            ),
+            lambda2_norm=self.current_lambda2 / max(1, self.n), n=self.n,
+            rho_target=self.rho_target, rho_current=rho,
+        )
 
     def reset_with_target(
         self,
@@ -324,14 +358,14 @@ class GraphEnv:
         self.episode_len = 0
         if self.incremental_observation:
             self._initialize_incremental_state()
-        lambda2, lambda3, phi2, phi3 = spectral_features(self.adj)
-        return self._build_observation(spectral_cache=(lambda2, lambda3, phi2, phi3))
+        return self._initial_observation()
 
     def _build_observation(
         self,
         *,
         spectral_cache: Optional[Tuple[float, float, np.ndarray, np.ndarray]] = None,
     ) -> GraphObservation:
+        obs_build_start = time.perf_counter()
         if self.adj is None:
             raise RuntimeError("Environment not initialized")
 
@@ -339,7 +373,7 @@ class GraphEnv:
         m = edge_count(self.adj)
         rho_current = normalized_density(n, m)
 
-        use_spectral = (self.rl_variant == "full") or self.compute_spectral_each_step
+        use_spectral = self.compute_spectral_each_step
         if spectral_cache is not None:
             lambda2, lambda3, phi2, phi3 = spectral_cache
             self.current_lambda2 = float(lambda2)
@@ -366,68 +400,45 @@ class GraphEnv:
                 else np.zeros((n,), dtype=np.float64)
             )
 
-        if self.rl_variant == "full":
-            node_features, deg = build_node_features_full(
-                adj=self.adj,
-                n=n,
-                phi2=phi2,
-                phi3=phi3,
-                incremental_observation=self.incremental_observation,
-                deg_cache=self._deg_cache,
-                a2_counts=self._a2_counts,
-                triangles_per_node=self._triangles_per_node,
-                eye_mask=self._eye_mask,
-            )
-            global_features = build_global_features_full(
-                n=n,
-                rho_target=self.rho_target,
-                rho_current=rho_current,
-                lambda2=lambda2,
-                lambda3=lambda3,
-            )
-            candidate_pairs, pair_features = build_candidate_features_full(
-                adj=self.adj,
-                deg=deg,
-                n=n,
-                phi2=phi2,
-                phi3=phi3,
-                top_k=self.top_k,
-                dist_cap=self.dist_cap,
-                incremental_observation=self.incremental_observation,
-                pair_i=self._pair_i,
-                pair_j=self._pair_j,
-                pair_is_nonedge=self._pair_is_nonedge,
-                dist_matrix=self._dist_matrix,
-            )
-        elif self.rl_variant == "lite_v2":
-            node_features, deg = build_node_features_lite(
-                adj=self.adj,
-                n=n,
-                incremental_observation=self.incremental_observation,
-                deg_cache=self._deg_cache,
-                a2_counts=self._a2_counts,
-                triangles_per_node=self._triangles_per_node,
-                eye_mask=self._eye_mask,
-            )
-            global_features = build_global_features_lite(
-                n=n,
-                rho_target=self.rho_target,
-                rho_current=rho_current,
-            )
-            candidate_pairs, pair_features = build_candidate_features_lite(
-                adj=self.adj,
-                deg=deg,
-                n=n,
-                dist_cap=self.dist_cap,
-                incremental_observation=self.incremental_observation,
-                pair_i=self._pair_i,
-                pair_j=self._pair_j,
-                pair_is_nonedge=self._pair_is_nonedge,
-                dist_matrix=self._dist_matrix,
-            )
-        else:  # pragma: no cover
-            raise ValueError(f"Unsupported rl_variant: {self.rl_variant}")
-        edge_index = build_edge_index(self.adj)
+        node_features, deg = build_node_features(
+            adj=self.adj,
+            n=n,
+            incremental_observation=self.incremental_observation,
+            deg_cache=self._deg_cache,
+            a2_counts=self._a2_counts,
+            triangles_per_node=self._triangles_per_node,
+            eye_mask=self._eye_mask,
+        )
+        global_features = build_global_features(
+            n=n,
+            rho_target=self.rho_target,
+            rho_current=rho_current,
+        )
+        cand_start = time.perf_counter()
+        (
+            candidate_pairs,
+            pair_features,
+            candidate_pool_size_raw,
+            candidate_pool_size_selected,
+        ) = build_candidate_features(
+            adj=self.adj,
+            deg=deg,
+            node_features=node_features,
+            n=n,
+            dist_cap=self.dist_cap,
+            incremental_observation=self.incremental_observation,
+            pair_i=self._pair_i,
+            pair_j=self._pair_j,
+            pair_is_nonedge=self._pair_is_nonedge,
+            dist_matrix=self._dist_matrix,
+            node_budget=self.lite_v3_node_budget,
+            pair_budget=self.lite_v3_pair_budget,
+            pair_budget_min=self.lite_v3_pair_budget_min,
+            a2_counts=self._a2_counts,
+        )
+        time_candidate_sec = float(time.perf_counter() - cand_start)
+        edge_index = np.zeros((2, 0), dtype=np.int64) if self.inference_only else build_edge_index(self.adj)
+        time_obs_build_sec = float(time.perf_counter() - obs_build_start)
 
         return GraphObservation(
             node_features=node_features,
@@ -439,6 +450,10 @@ class GraphEnv:
             n=n,
             rho_target=self.rho_target,
             rho_current=rho_current,
+            candidate_pool_size_raw=int(candidate_pool_size_raw),
+            candidate_pool_size_selected=int(candidate_pool_size_selected),
+            time_obs_build_sec=time_obs_build_sec,
+            time_candidate_sec=time_candidate_sec,
         )
 
     def step(
@@ -446,6 +461,7 @@ class GraphEnv:
         action_pair: Tuple[int, int],
         extra_reward: float = 0.0,
     ) -> Tuple[GraphObservation, float, bool, Dict]:
+        step_start = time.perf_counter()
         if self.adj is None:
             raise RuntimeError("Environment not initialized")
 
@@ -474,7 +490,7 @@ class GraphEnv:
                 common_neighbors=common_neighbors,
             )
 
-        use_spectral = (self.rl_variant == "full") or self.compute_spectral_each_step
+        use_spectral = self.compute_spectral_each_step
         done = edge_count(self.adj) >= self.m_target
         reward = 0.0
 
@@ -492,17 +508,21 @@ class GraphEnv:
             )
             terminal_lambda2_norm = (new_lambda2 / float(max(1, self.n))) if done else None
         else:
-            # Fast inference path for lite_v2: avoid per-step spectral decomposition.
+            # Fast inference: avoid per-step spectral decomposition.
             if done:
-                new_lambda2, new_lambda3, phi2, phi3 = spectral_features(self.adj)
-                self.current_lambda2 = float(new_lambda2)
-                self.current_lambda3 = float(new_lambda3)
-                self.current_phi2 = np.asarray(phi2, dtype=np.float64).copy()
-                self.current_phi3 = np.asarray(phi3, dtype=np.float64).copy()
+                if self.inference_only:
+                    new_lambda2 = algebraic_connectivity(self.adj)
+                    self.current_lambda2 = new_lambda2
+                else:
+                    new_lambda2, new_lambda3, phi2, phi3 = spectral_features(self.adj)
+                    self.current_lambda2 = float(new_lambda2)
+                    self.current_lambda3 = float(new_lambda3)
+                    self.current_phi2 = np.asarray(phi2, dtype=np.float64).copy()
+                    self.current_phi3 = np.asarray(phi3, dtype=np.float64).copy()
                 terminal_lambda2_norm = new_lambda2 / float(max(1, self.n))
             else:
                 terminal_lambda2_norm = None
-            obs = self._build_observation()
+            obs = self._terminal_observation() if done and self.inference_only else self._build_observation()
 
         reward += float(extra_reward)
         self.episode_return += reward
@@ -514,6 +534,11 @@ class GraphEnv:
             "terminal_lambda2_norm": terminal_lambda2_norm,
             "rho_target": self.rho_target,
             "n": self.n,
+            "candidate_pool_size_raw": int(obs.candidate_pool_size_raw),
+            "candidate_pool_size_selected": int(obs.candidate_pool_size_selected),
+            "time_obs_build_sec": float(obs.time_obs_build_sec),
+            "time_candidate_sec": float(obs.time_candidate_sec),
+            "time_env_step_sec": float(time.perf_counter() - step_start),
         }
         if done:
             info.update(self._episode_init_metadata)
@@ -525,6 +550,10 @@ class GraphEnv:
             "rl_variant": self.rl_variant,
             "compute_spectral_each_step": self.compute_spectral_each_step,
             "incremental_observation": self.incremental_observation,
+            "inference_only": self.inference_only,
+            "lite_v3_node_budget": self.lite_v3_node_budget,
+            "lite_v3_pair_budget": self.lite_v3_pair_budget,
+            "lite_v3_pair_budget_min": self.lite_v3_pair_budget_min,
             "n": self.n,
             "adj": self.adj,
             "rho_target": self.rho_target,
@@ -544,6 +573,18 @@ class GraphEnv:
         self.rl_variant = str(state.get("rl_variant", self.rl_variant))
         self.compute_spectral_each_step = bool(
             state.get("compute_spectral_each_step", self.compute_spectral_each_step)
+        )
+        self.inference_only = bool(state.get("inference_only", False))
+        if self.inference_only and (self.rl_variant != "lite_v3" or self.compute_spectral_each_step):
+            raise ValueError("Invalid inference_only environment state")
+        self.lite_v3_node_budget = int(
+            state.get("lite_v3_node_budget", self.lite_v3_node_budget)
+        )
+        self.lite_v3_pair_budget = int(
+            state.get("lite_v3_pair_budget", self.lite_v3_pair_budget)
+        )
+        self.lite_v3_pair_budget_min = int(
+            state.get("lite_v3_pair_budget_min", self.lite_v3_pair_budget_min)
         )
         self.n = int(state["n"])
         self.adj = state["adj"].copy() if state["adj"] is not None else None
@@ -590,9 +631,12 @@ class VectorGraphEnvManager:
         dist_cap: int,
         terminal_bonus_coef: float,
         base_seed: int,
-        rl_variant: str = "full",
+        rl_variant: str = "lite_v3",
         compute_spectral_each_step: bool = True,
         incremental_observation: bool = True,
+        lite_v3_node_budget: int = 32,
+        lite_v3_pair_budget: int = 96,
+        lite_v3_pair_budget_min: int = 32,
         init_mode: str = "path",
         initial_adj_builder: Optional[InitAdjBuilder] = None,
     ):
@@ -616,6 +660,9 @@ class VectorGraphEnvManager:
                 rl_variant=self.rl_variant,
                 compute_spectral_each_step=self.compute_spectral_each_step,
                 incremental_observation=incremental_observation,
+                lite_v3_node_budget=lite_v3_node_budget,
+                lite_v3_pair_budget=lite_v3_pair_budget,
+                lite_v3_pair_budget_min=lite_v3_pair_budget_min,
             )
             for i in range(num_envs)
         ]

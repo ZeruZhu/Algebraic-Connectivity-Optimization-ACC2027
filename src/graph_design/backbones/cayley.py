@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 import math
 import random
 
 import networkx as nx
 import numpy as np
+from scipy.linalg import eigvalsh as selected_eigvalsh
 
 from graph_design.backbones.base import BackboneGenerator
+from graph_design.backbones.cayley_fft_delete import CyclicDeleteFFTEvaluator
 from graph_design.config import DesignConfig
 from graph_design.types import BackboneCandidate, DesignProblem
 from graph_design.utils import relabel_to_integers
@@ -167,11 +170,35 @@ class _CyclicGroup:
         return (-g) % self.order
 
 
-def _build_group(target_n: int, index: int, lift_nodes: int):
+def _right_actions(group, generators: np.ndarray, nodes: np.ndarray) -> np.ndarray:
+    generators = np.asarray(generators, dtype=np.int32)[:, None]
+    nodes = np.asarray(nodes, dtype=np.int32)[None, :]
+    if isinstance(group, _CyclicGroup):
+        return (nodes + generators) % group.order
+    half = group.half
+    acted = np.where(nodes // half == 0, generators % half, group.twist * (generators % half))
+    return (nodes % half + acted) % half + ((nodes // half) ^ (generators // half)) * half
+
+
+@lru_cache(maxsize=8)
+def _adjacency_generator_table(group) -> np.ndarray:
+    nodes = np.arange(group.order, dtype=np.int32)
+    inverses = np.asarray([group.inv(int(g)) for g in nodes], dtype=np.int32)
+    # Entry (g,h) is g^{-1}h: adjacency is the generator indicator at this index.
+    table = _right_actions(group, nodes, inverses).T.copy()
+    table.setflags(write=False)
+    return table
+
+
+def _build_group(target_n: int, index: int, lift_nodes: int, index2_group: str = "current"):
+    if index2_group not in {"current", "cyclic"}:
+        raise ValueError(f"Unknown index-2 group choice: {index2_group}")
     lifted_n = target_n + lift_nodes
     if index == 2:
         if lifted_n < 2 or lifted_n % 2 != 0:
             raise ValueError(f"Unsupported lifted order {lifted_n} for index-2.")
+        if index2_group == "cyclic":
+            return _CyclicGroup(order=lifted_n)
         half = lifted_n // 2
         use_semidihedral = (
             lift_nodes == 0
@@ -215,6 +242,7 @@ class _InverseClosedSampler:
         self.pool_set = set(pool)
         self.involutions: list[int] = []
         self.pairs: list[tuple[int, int]] = []
+        self._feasible_counts: dict[int, tuple[int, ...]] = {}
         self._build_parts()
 
     def _build_parts(self) -> None:
@@ -257,7 +285,9 @@ class _InverseClosedSampler:
             out.add(b)
         return out
 
-    def _feasible_involution_counts(self, size: int) -> list[int]:
+    def _feasible_involution_counts(self, size: int) -> tuple[int, ...]:
+        if size in self._feasible_counts:
+            return self._feasible_counts[size]
         min_t = max(0, size - 2 * len(self.pairs))
         max_t = min(size, len(self.involutions))
         out: list[int] = []
@@ -267,7 +297,9 @@ class _InverseClosedSampler:
                 continue
             if rem // 2 <= len(self.pairs):
                 out.append(t)
-        return out
+        result = tuple(out)
+        self._feasible_counts[size] = result
+        return result
 
 
 def _sample_generators(
@@ -394,6 +426,7 @@ class _LiftDeleteBatchEvaluator:
         group,
         delete_nodes: tuple[int, ...],
         backend: str,
+        solver: str = "full",
     ) -> None:
         self.group = group
         self.n = group.order
@@ -416,17 +449,19 @@ class _LiftDeleteBatchEvaluator:
                 "cayley_spectral_backend='cuda' requires CuPy, but it is unavailable."
             )
         self.backend = backend
+        if solver not in {"full", "subset"}:
+            raise ValueError(f"Unknown dense solver: {solver}")
+        if backend == "cuda" and solver != "full":
+            raise ValueError("Selected-eigenvalue solving is CPU-only.")
+        self.solver = solver
 
         self.rows_np = np.arange(self.n, dtype=np.int32)
         self.diag_full_np = np.arange(self.n, dtype=np.int32)
         self.diag_keep_np = np.arange(self.keep.size, dtype=np.int32)
-        self.right_action_np = np.empty((self.n, self.n), dtype=np.int32)
-
-        for s in range(self.n):
-            for g in range(self.n):
-                self.right_action_np[s, g] = group.mul(g, s)
+        self.adjacency_indices = _adjacency_generator_table(group)[np.ix_(self.keep, self.keep)]
 
         if self.backend == "cuda":  # pragma: no cover - optional CUDA path.
+            self.right_action_np = _right_actions(group, self.rows_np, self.rows_np)
             self.rows_cp = cp.asarray(self.rows_np)
             self.diag_full_cp = cp.asarray(self.diag_full_np)
             self.diag_keep_cp = cp.asarray(self.diag_keep_np)
@@ -460,24 +495,23 @@ class _LiftDeleteBatchEvaluator:
         b, d = idx.shape
         n = self.n
 
-        A = np.zeros((b, n, n), dtype=np.float64)
-        batch_idx = np.arange(b, dtype=np.int32)[:, None]
-        rows = self.rows_np[None, :]
-        for j in range(d):
-            s = idx[:, j]
-            cols = self.right_action_np[s]
-            A[batch_idx, rows, cols] = 1.0
-        A = np.maximum(A, np.transpose(A, (0, 2, 1)))
-        A[:, self.diag_full_np, self.diag_full_np] = 0.0
-
-        sub = A[:, self.keep][:, :, self.keep]
+        indicator = np.zeros((b, n), dtype=np.float64)
+        indicator[np.arange(b)[:, None], idx] = 1.0
+        indicator[:, 0] = 0.0
+        sub = indicator[:, self.adjacency_indices]
+        sub = np.maximum(sub, np.transpose(sub, (0, 2, 1)))
         deg = np.sum(sub, axis=2)
         edges = np.rint(np.sum(deg, axis=1) / 2.0).astype(np.int64)
 
         L = -sub
         L[:, self.diag_keep_np, self.diag_keep_np] = deg
-        evals = np.linalg.eigvalsh(L)
-        l2 = np.asarray(evals[:, 1], dtype=np.float64)
+        if self.solver == "subset":
+            l2 = np.asarray([
+                selected_eigvalsh(matrix, subset_by_index=(1, 1), driver="evr", check_finite=False)[0]
+                for matrix in L
+            ], dtype=np.float64)
+        else:
+            l2 = np.asarray(np.linalg.eigvalsh(L)[:, 1], dtype=np.float64)
         return l2, edges
 
     def _lambda2_edges_cuda_batch(  # pragma: no cover - optional CUDA path.
@@ -558,6 +592,65 @@ class _CyclicNoDeleteCharacteristicEvaluator:
         lambda2 = np.maximum(degree - max_nontrivial_adj, 0.0)
         edges = np.rint(degree * float(n) / 2.0).astype(np.int64)
         return np.asarray(lambda2, dtype=np.float64), np.asarray(edges, dtype=np.int64)
+
+
+class _SemidihedralNoDeleteCharacteristicEvaluator:
+    """Exact lambda_2 of inverse-closed semidihedral Cayley graphs, without deletion.
+
+    Write n = 2m and t = m/2 - 1. Fourier transformation along the normal
+    cyclic subgroup gives m Hermitian blocks [[R_j, T_j], [conj(T_j), R_tj]],
+    where R and T are the FFTs of the two generator-coset indicators.
+    Evaluating their eigenvalues costs O(n log n) time and O(n) space per graph.
+    """
+
+    def __init__(self, *, group: _SemidirectGroup) -> None:
+        self.group = group
+        self.n = int(group.order)
+        self.m = int(group.half)
+        if (
+            self.n < 16
+            or not _is_power_of_two(self.n)
+            or self.n != 2 * self.m
+            or int(group.twist) % self.m != self.m // 2 - 1
+        ):
+            raise ValueError("Expected a semidihedral group of power-of-two order >= 16.")
+        self._twisted_frequencies = (np.arange(self.m) * int(group.twist)) % self.m
+        self._inverse_indices = np.asarray([group.inv(g) for g in range(self.n)])
+
+    def lambda2_edges_from_index_matrix(
+        self,
+        generator_index_matrix: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        idx = np.asarray(generator_index_matrix, dtype=np.int32)
+        if idx.ndim != 2:
+            raise ValueError("generator_index_matrix must have shape [batch, degree].")
+        b = idx.shape[0]
+        if b == 0 or idx.shape[1] == 0:
+            return np.zeros(b, dtype=np.float64), np.zeros(b, dtype=np.int64)
+        if np.any(idx <= 0) or np.any(idx >= self.n):
+            raise ValueError("Generators must be nonidentity group elements.")
+
+        indicator = np.zeros((b, self.n), dtype=np.float64)
+        indicator[np.arange(b)[:, None], idx] = 1.0
+        if not np.array_equal(indicator, indicator[:, self._inverse_indices]):
+            raise ValueError("The semidihedral generator sets must be inverse-closed.")
+
+        rotations = np.fft.fft(indicator[:, :self.m], axis=1).real
+        other_coset = np.fft.fft(indicator[:, self.m:], axis=1)
+        twisted_rotations = rotations[:, self._twisted_frequencies]
+        center = 0.5 * (rotations + twisted_rotations)
+        radius = np.hypot(0.5 * (rotations - twisted_rotations), np.abs(other_coset))
+        upper = center + radius
+
+        # Remove only the trivial eigenvalue (the upper root at frequency zero).
+        # Other copies of degree must remain, giving lambda_2 = 0 if disconnected.
+        max_nontrivial_adj = np.maximum(
+            center[:, 0] - radius[:, 0], np.max(upper[:, 1:], axis=1)
+        )
+        degree = np.sum(indicator, axis=1)
+        lambda2 = np.maximum(degree - max_nontrivial_adj, 0.0)
+        edges = np.rint(degree * float(self.n) / 2.0).astype(np.int64)
+        return np.asarray(lambda2, dtype=np.float64), edges
 
 
 class _DihedralNoDeleteCharacteristicEvaluator:
@@ -673,6 +766,11 @@ def _build_batch_evaluator(
     config: DesignConfig,
 ) -> tuple[object, str]:
     eval_mode = str(getattr(config, "cayley_eval_mode", "dense")).strip().lower()
+    solver = str(config.cayley_dense_solver).strip().lower()
+    if solver not in {"full", "subset", "fft_iterative"}:
+        raise ValueError(f"Unknown Cayley dense solver: {solver}")
+    if solver != "full" and config.cayley_spectral_backend != "cpu":
+        raise ValueError("Experimental Cayley solvers require the CPU backend.")
     if eval_mode not in {"dense", "character"}:
         raise ValueError(
             "cayley_eval_mode must be one of {'dense','character'}, "
@@ -693,6 +791,17 @@ def _build_batch_evaluator(
         eval_mode == "character"
         and not delete_nodes
         and isinstance(group, _SemidirectGroup)
+        and group.kind == "semidihedral"
+    ):
+        return (
+            _SemidihedralNoDeleteCharacteristicEvaluator(group=group),
+            "character_semidihedral_no_delete",
+        )
+
+    if (
+        eval_mode == "character"
+        and not delete_nodes
+        and isinstance(group, _SemidirectGroup)
         and int(group.twist) % int(group.half) == (int(group.half) - 1) % int(group.half)
     ):
         return (
@@ -700,25 +809,32 @@ def _build_batch_evaluator(
             "character_dihedral_no_delete",
         )
 
+    if solver == "fft_iterative" and delete_nodes and isinstance(group, _CyclicGroup):
+        return (
+            CyclicDeleteFFTEvaluator(order=group.order, delete_nodes=delete_nodes),
+            "fft_iterative_cyclic_delete",
+        )
+
     return (
         _LiftDeleteBatchEvaluator(
             group=group,
             delete_nodes=delete_nodes,
             backend=config.cayley_spectral_backend,
+            solver="full" if solver == "full" else "subset",
         ),
-        "dense_laplacian",
+        "dense_laplacian" if solver == "full" else "dense_subset_laplacian",
     )
 
 
 def _build_cayley_graph(group, generators: set[int]) -> nx.Graph:
     graph = nx.Graph()
     graph.add_nodes_from(range(group.order))
-    generator_list = list(generators)
-    for g in range(group.order):
-        for s in generator_list:
-            h = group.mul(g, s)
-            if g != h:
-                graph.add_edge(g, h)
+    nodes = np.arange(group.order, dtype=np.int32)
+    destinations = _right_actions(group, np.asarray(sorted(generators), dtype=np.int32), nodes)
+    sources = np.broadcast_to(nodes, destinations.shape)
+    inverse_closed = all(group.inv(g) in generators for g in generators)
+    mask = sources < destinations if inverse_closed else sources != destinations
+    graph.add_edges_from(zip(sources[mask].tolist(), destinations[mask].tolist()))
     return graph
 
 
@@ -795,11 +911,16 @@ class CayleyBackboneGenerator(BackboneGenerator):
 
         candidates: list[BackboneCandidate] = []
         evaluated_indices: list[int] = [score.index for score in valid_scores]
+        # Preallocate streams so changing one group's sampler cannot perturb another index.
+        index_rngs = (
+            {score.index: random.Random(rng.getrandbits(64)) for score in valid_scores}
+            if config.cayley_independent_index_seeds else {}
+        )
         for selected in valid_scores:
             candidate = self._generate_for_score(
                 problem=problem,
                 config=config,
-                rng=rng,
+                rng=index_rngs.get(selected.index, rng),
                 selected=selected,
                 scores=scores,
                 index2_upper=index2_upper,
@@ -839,6 +960,7 @@ class CayleyBackboneGenerator(BackboneGenerator):
             target_n=problem.n,
             index=selected.index,
             lift_nodes=selected.lift_nodes,
+            index2_group=config.cayley_index2_group,
         )
         subgroup, nontrivial_union = _split_cosets(group, selected.index)
         if not nontrivial_union:
@@ -922,17 +1044,12 @@ class CayleyBackboneGenerator(BackboneGenerator):
                 )
             if not generators:
                 continue
-            idx = np.fromiter(
-                sorted(generators),
-                dtype=np.int32,
-                count=len(generators),
-            )
-            degree = int(len(idx))
-            key = tuple(int(x) for x in idx.tolist())
+            key = tuple(sorted(generators))
+            degree = len(key)
             if key in seen_by_degree[degree]:
                 continue
             seen_by_degree[degree].add(key)
-            samples_by_degree[degree].append(idx)
+            samples_by_degree[degree].append(np.asarray(key, dtype=np.int32))
 
         if not samples_by_degree:
             return None
@@ -992,6 +1109,8 @@ class CayleyBackboneGenerator(BackboneGenerator):
 
         metadata: dict[str, float | int | bool | str] = {
             "group_kind": group.kind,
+            "index2_group_choice": config.cayley_index2_group,
+            "independent_index_seeds": bool(config.cayley_independent_index_seeds),
             "group_order": group.order,
             "selected_index": selected.index,
             "j_selected": selected.lift_nodes,
@@ -1010,6 +1129,9 @@ class CayleyBackboneGenerator(BackboneGenerator):
             "delete_nodes": ",".join(str(node) for node in delete_nodes),
             "eval_mode": str(getattr(config, "cayley_eval_mode", "dense")),
             "eval_backend": str(eval_backend),
+            "dense_solver": str(config.cayley_dense_solver),
+            "iterative_fallback_count": int(getattr(evaluator, "fallback_count", 0)),
+            "iterative_matvec_count": int(getattr(evaluator, "matvec_count", 0)),
             "multi_index_overlap": bool(config.cayley_multi_index_overlap),
             "sampling_mode": str(sampling_mode),
             "enable_index4": bool(enable_index4),

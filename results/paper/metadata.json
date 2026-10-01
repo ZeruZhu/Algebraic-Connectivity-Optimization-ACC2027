@@ -1,0 +1,161 @@
+{
+  "description": "Fresh BB-RL and MAC measurements used in ACC2027 Tables I and II.",
+  "original_run": {
+    "status": "completed",
+    "started_utc": "2026-09-24T22:56:23.117195+00:00",
+    "finished_utc": "2026-09-24T22:59:55.967964+00:00",
+    "host": "dn020",
+    "python": "3.12.3 | packaged by conda-forge | (main, Apr 15 2024, 18:38:13) [GCC 12.3.0]",
+    "slurm_job_id": "2202156",
+    "slurm_cpus": "1",
+    "threads": 1
+  },
+  "resources": {
+    "cluster": "SeaWulf",
+    "partition": "short-40core",
+    "nodes": 1,
+    "exclusive_node": true,
+    "cpus_per_task": 1,
+    "memory_gb": 8,
+    "numerical_threads": 1
+  },
+  "methods": {
+    "MAC": 2100,
+    "BB-RL": 2100
+  },
+  "n_values": [
+    8,
+    16,
+    32,
+    64,
+    128
+  ],
+  "points_requested": 100,
+  "repeat_indices": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "cases_per_method": 2100,
+  "config": {
+    "rho_very_low": 0.05,
+    "rho_low_mix_end": 0.1,
+    "rho_low": 0.5,
+    "rho_high": 0.75,
+    "routing_mode": "window",
+    "cayley_samples": 500,
+    "cayley_degree_slack": 0,
+    "cayley_multi_index_overlap": true,
+    "cayley_enable_index4": true,
+    "cayley_sampling_mode": "coset",
+    "cayley_index2_group": "current",
+    "cayley_independent_index_seeds": true,
+    "cayley_index2_overlap_high": 0.6,
+    "cayley_index3_overlap_high": 0.6666666666666666,
+    "cayley_index4_overlap_low": 0.6666666666666666,
+    "cayley_eval_batch_size": 128,
+    "cayley_spectral_backend": "cpu",
+    "cayley_eval_mode": "character",
+    "cayley_dense_solver": "subset",
+    "fvg_reuse_cache": true,
+    "fvg_max_steps": null,
+    "force_connected_backbone": true
+  },
+  "policy": {
+    "name": "BB-RL",
+    "checkpoint": "checkpoints/bbrl.pt",
+    "checkpoint_sha256": "90ace2cca8cfc449486dd36161f82cb3f5797adf32873e0696c51d8a7721dfa8",
+    "training_steps_at_checkpoint": 30000,
+    "train_init_mode": "backbone",
+    "original_config_sha256": "4429cc1db38120d8c9d14762a31d192ca05e95a010b72cb4caf3b02c990ce662"
+  },
+  "mac_parameters": {
+    "mac_fw_iters": 50,
+    "mac_duality_gap_tol": 1e-06,
+    "mac_init_mode": "fiedler_topk",
+    "mac_seed": 0
+  },
+  "timing_protocol": {
+    "resident_policy": true,
+    "warmups_per_size": 3,
+    "method_order": "alternating",
+    "overlap_execution": "serial; construct and complete every routed family, then select maximum final lambda2",
+    "structural_lookup_caches": "warm; complete graph outputs are not cached",
+    "included": [
+      "graph construction",
+      "environment reset and features",
+      "all completion branches",
+      "terminal scoring",
+      "winner selection",
+      "final graph copying"
+    ],
+    "excluded": [
+      "imports",
+      "model loading",
+      "training",
+      "file IO",
+      "independent graph and score verification"
+    ],
+    "score_backend": "SciPy subset scalar lambda2 for both methods; MAC optimizer unchanged.",
+    "interpretation": "Repeated-query online runtime from one full-grid run; not cold process-start latency or a multi-node timing study."
+  },
+  "quality_reference": "Historical full-construction FVG from ../baseline/raw.csv, paired exactly by (n,m,repeat_idx); not rerun.",
+  "aggregation": {
+    "density_point": "(n,m)",
+    "quality": "Average five repeat values/deltas per density point, then report mean and population standard deviation across density points. FVG is absolute lambda2; other methods are paired differences from FVG.",
+    "wins_and_matches": "Counts across all repeat cases; absolute delta tolerance 1e-10.",
+    "runtime": "Average repeats per density point, then average density points. BB-RL completion includes final selection. Historical baseline timings remain explicitly identified."
+  },
+  "validation": {
+    "validated_branch_count": 2710,
+    "validated_result_count": 4200,
+    "max_score_error": 2.4158453015843406e-13
+  },
+  "original_environment": {
+    "numpy": "1.26.4",
+    "scipy": "1.14.0",
+    "torch": "2.3.0",
+    "torch_geometric": "2.7.0",
+    "networkx": "3.3"
+  },
+  "provenance": {
+    "source_directory": "experiments/rl/data/eval/paper_lite_2202156",
+    "original_artifact_sha256": {
+      "raw.csv": "2997139ab53666ca34987da238f0ef1595fdfcc993cacc799f74dd2fa94e13cb",
+      "branches.csv": "b4681d6a2b098e579829e3e7b7d60a6e19ac0a70da015a100c2577d39369e408",
+      "metadata.json": "d6ec855d980fd39c8e47bd5b8f83d240fa0da408bf2b4da8804e801a203c0175",
+      "quality.csv": "ef6ad169c38f3bda92d3ddb6b7c496a381f09265cbefff8fd6877d35f7ef03ce",
+      "cost_fresh.csv": "16ea53cdbb71acdebc6eb2b79d6af7a245f5393872837d1a30cb06368a99e2f3"
+    },
+    "original_source_sha256": {
+      "benchmark_paper_lite.py": "f395137ac9c888dd2cff2e26e6c1724471cb23ee6567c7413ee31ba201f53948",
+      "run_paper_lite.sbatch": "61b529632c564b24d34d2316440d63e7ad4774643a267ba455bd585f8e89a7b5",
+      "src/graph_design/backbones/cayley.py": "59c9f9147dcc46d8873c9de41f526af6556fd3a679587d6e987f0d30d082f4e6",
+      "src/graph_design/backbones/envelope.py": "4eff1b9ae7b3576f82694f25ad3821649fe66c82b13bee8916ce0f8d4d224d30",
+      "src/graph_design/spectral.py": "bcd31416fb808a17f6bdc2b36ecd534386892935b7d74ec1985dacc3dd83d6f2",
+      "src/graph_design/config.py": "126358deacb3aa9faf76fff70426b3a0175a2b4338ddfab8194d34017bc6d60a",
+      "src/graph_design/routing.py": "d19a926574c62eddd713203ba91fb7e05660bfd53e807f7f64148f1b22ba1b81",
+      "rl_train/backbone_init.py": "bdc530dad4db763fbf73aa1a2e39917604838512156124601769512d1fda6487",
+      "rl_train/checkpoint.py": "51c45ab555fb9582368b771a27e5e38d414fde44b6266f92255192de770a3098",
+      "rl_train/config.py": "2d252a4f954b4807af6e35b1df6fcc537260b3682ecc058f5c0d1427de65e6b8",
+      "rl_train/env.py": "974d6420d21fd21eb106fbf56356556ffc3127989b8023721f35a868b0ca2cbb",
+      "rl_train/features/lite_v3.py": "e2873883d3246bab861b9a1cda11e8a463062e77760295ab53bd52b5c93580cb",
+      "rl_train/model.py": "c3b5c3d187a5fec68fc00cac875992281ec93807bf188eb3eadee73e8efaed90",
+      "rl_train/selector.py": "111dd2e52de1cbeed0c403f6ad2a16533711d7a4be6145855e5bcaebbcaff5bd",
+      "baseline/src/acm/baselines.py": "3a954c0dad9b860772541f705fac8024d05ff32d3fc502c89b4a313677dbf803"
+    },
+    "transformations": [
+      "Map raw.csv method labels BB-Lite to BB-RL and path_mac to MAC; preserve all numeric field strings and row order.",
+      "Copy branches.csv byte-for-byte.",
+      "Recompute combined quality.csv and cost.csv from fresh raw.csv and the retained historical baseline raw.csv.",
+      "Omit obsolete proposed-model reference rows and historical MAC measurements."
+    ],
+    "source_hash_note": "Original source hashes identify the measured run before public-release cleanup; they are not claimed to hash the refactored public files."
+  },
+  "public_artifact_sha256": {
+    "raw.csv": "8126874e7de8cbaf5da2b22965986a47be9dba4cdd5ee48e00192d1e754bbe69",
+    "branches.csv": "b4681d6a2b098e579829e3e7b7d60a6e19ac0a70da015a100c2577d39369e408"
+  }
+}

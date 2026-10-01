@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 from .env import GraphObservation
-from .model import GraphPolicyNetwork
+from .model import BBPolicyNetwork
 
 
 @dataclass
@@ -128,7 +128,7 @@ class RolloutBuffer:
 
 
 def ppo_update(
-    model: GraphPolicyNetwork,
+    model: BBPolicyNetwork,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler._LRScheduler,
     buffer: RolloutBuffer,

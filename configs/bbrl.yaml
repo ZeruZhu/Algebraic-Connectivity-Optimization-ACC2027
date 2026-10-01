@@ -1,0 +1,78 @@
+# The paper checkpoint was selected at 30,000 steps in the first curriculum phase.
+# Later phases preserve the original planned training schedule and LR horizon.
+curriculum:
+  phases:
+  - name: phase_a_12_24
+    start_env_step: 0
+    end_env_step: 120000
+    n_min: 12
+    n_max: 24
+  - name: phase_b_16_48
+    start_env_step: 120000
+    end_env_step: 320000
+    n_min: 16
+    n_max: 48
+  - name: phase_c_32_96
+    start_env_step: 320000
+    end_env_step: 560000
+    n_min: 32
+    n_max: 96
+  - name: phase_d_64_128
+    start_env_step: 560000
+    end_env_step: 800000
+    n_min: 64
+    n_max: 128
+env:
+  num_envs: 8
+  top_k: 128
+  dist_cap: 4
+  terminal_bonus_coef: 0.2
+ppo:
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_ratio: 0.2
+  learning_rate: 0.0003
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 1.0
+  update_epochs: 4
+  minibatch_size: 64
+  rollout_env_steps: 2048
+determinism:
+  strict: true
+  seed: 1234
+  num_threads: 1
+evaluation:
+  episodes: 8
+backbone_init:
+  routing_mode: window
+  rho_very_low: 0.05
+  rho_low_mix_end: 0.1
+  rho_low: 0.5
+  rho_high: 0.75
+  cayley_samples: 500
+  cayley_degree_slack: 0
+  cayley_multi_index_overlap: true
+  cayley_enable_index4: true
+  cayley_index2_overlap_high: 0.6
+  cayley_index3_overlap_high: 0.6666666666666666
+  cayley_index4_overlap_low: 0.6666666666666666
+  cayley_spectral_backend: cpu
+  cayley_eval_batch_size: 128
+  cayley_eval_mode: dense
+  force_connected_backbone: true
+policy:
+  node_budget: 32
+  pair_budget: 96
+  pair_budget_min: 32
+  scorer_hidden_dim: 64
+  scorer_layers: 2
+  value_hidden_dim: 64
+  fast_inference: true
+train:
+  max_env_steps: 800000
+  output_dir: runs/bbrl
+  eval_every_env_steps: 10000
+  checkpoint_every_env_steps: 20000
+init:
+  mode: backbone

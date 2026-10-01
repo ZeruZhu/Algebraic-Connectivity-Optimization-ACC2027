@@ -5,6 +5,11 @@ from typing import List, Tuple
 import numpy as np
 
 try:
+    from scipy.linalg import eigvalsh as scipy_eigvalsh
+except ImportError:  # pragma: no cover - optional dependency
+    scipy_eigvalsh = None
+
+try:
     from scipy.sparse.csgraph import shortest_path as scipy_shortest_path
 except Exception:  # pragma: no cover - optional dependency
     scipy_shortest_path = None
@@ -74,6 +79,16 @@ def spectral_features(adj: np.ndarray) -> Tuple[float, float, np.ndarray, np.nda
         phi3 = np.zeros((n,), dtype=np.float64)
 
     return lambda2, lambda3, phi2.astype(np.float64), phi3.astype(np.float64)
+
+
+def algebraic_connectivity(adj: np.ndarray) -> float:
+    """Score a graph without computing unused eigenvectors or the full spectrum."""
+    if len(adj) < 2:
+        return 0.0
+    matrix = laplacian(adj)
+    if scipy_eigvalsh is not None:
+        return float(scipy_eigvalsh(matrix, subset_by_index=(1, 1), driver="evr")[0])
+    return float(np.linalg.eigvalsh(matrix)[1])
 
 
 def node_degrees(adj: np.ndarray) -> np.ndarray:

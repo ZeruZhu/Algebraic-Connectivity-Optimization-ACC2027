@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "algebraic-connectivity-acc2027"
+version = "1.0.0"
+description = "BB-RL: density-dependent backbones and reinforcement-learning completion for algebraic connectivity."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26,<3",
+  "scipy>=1.14,<2",
+  "networkx>=3.3,<4",
+  "torch>=2.3,<3",
+  "PyYAML>=6,<7",
+  "threadpoolctl>=3.1,<4",
+]
+
+[project.optional-dependencies]
+analysis = ["matplotlib>=3.9,<4"]
+test = ["pytest>=8,<9"]
+solvers = ["cvxpy>=1.5,<2"]
+
+[tool.setuptools]
+packages = ["graph_design", "graph_design.backbones", "rl_train", "rl_train.features", "acm"]
+package-dir = {graph_design = "src/graph_design", rl_train = "rl_train", acm = "baseline/src/acm"}
+
+[tool.pytest.ini_options]
+pythonpath = [".", "src", "baseline/src"]
+testpaths = ["tests"]

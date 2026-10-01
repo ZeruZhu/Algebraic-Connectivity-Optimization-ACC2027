@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import csv
@@ -80,11 +80,11 @@ def main() -> None:
     out_cost = Path(args.out_cost_csv)
     out_quality = Path(args.out_quality_csv)
     if not in_csv.is_absolute():
-        in_csv = Path.cwd() / in_csv
+        in_csv = Path(__file__).resolve().parents[2] / in_csv
     if not out_cost.is_absolute():
-        out_cost = Path.cwd() / out_cost
+        out_cost = Path(__file__).resolve().parents[2] / out_cost
     if not out_quality.is_absolute():
-        out_quality = Path.cwd() / out_quality
+        out_quality = Path(__file__).resolve().parents[2] / out_quality
 
     rows_raw = _read_csv(in_csv)
     rows: List[Dict[str, object]] = []
@@ -253,4 +253,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

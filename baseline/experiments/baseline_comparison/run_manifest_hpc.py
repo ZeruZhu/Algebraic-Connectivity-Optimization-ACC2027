@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -13,9 +13,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from algebraic_connectivity.config import load_config  # noqa: E402
-from algebraic_connectivity.eval import evaluate_density_sweep, write_csv  # noqa: E402
-from algebraic_connectivity.graph_core import max_edges  # noqa: E402
+from acm.eval import evaluate_density_sweep, write_csv  # noqa: E402
+from acm.graph_core import max_edges  # noqa: E402
 
 
 def _nontrivial_m_points(n: int, target_points: int) -> List[int]:
@@ -136,7 +135,6 @@ def main() -> None:
     if args.dry_run:
         return
 
-    cfg = load_config(None)
     all_rows: List[Dict[str, float | int | str]] = []
 
     for n in n_values:
@@ -149,7 +147,6 @@ def main() -> None:
         )
         rows_n = evaluate_density_sweep(
             n_values=[int(n)],
-            cfg=cfg,
             methods=methods,
             rho_values=rho_values,
             repeats=repeats,
@@ -183,4 +180,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

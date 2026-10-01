@@ -1,0 +1,61 @@
+{
+  "description": "Historical baseline measurements retained for ACC2027 Tables I/II and as paired FVG quality references. These methods were not rerun in job 2202156.",
+  "methods": {
+    "MDMD": 2100,
+    "FVG": 2100,
+    "WTS": 2100,
+    "k-opt": 2100,
+    "SDP-step": 1100,
+    "OA-PMC": 100
+  },
+  "row_count": 9600,
+  "n_values": [
+    8,
+    16,
+    32,
+    64,
+    128
+  ],
+  "points_per_n_requested": 100,
+  "repeats": 5,
+  "method_parameters": {
+    "mdmd_seed": 0,
+    "mdmd_random_tie": false,
+    "wts_seed": 0,
+    "wts_iterations": 1000,
+    "wts_tabu_tenure": 100,
+    "wts_max_old_edges_per_iter": 8,
+    "wts_neighbor_sample_per_old": 3,
+    "wts_random_jump_per_old": 1,
+    "wts_init_mode": "random",
+    "kopt_k": 2,
+    "kopt_m": 10,
+    "kopt_max_rounds": 10,
+    "kopt_combo_cap_add": 500,
+    "kopt_combo_cap_del": 500,
+    "kopt_seed": 0,
+    "sdp_solver": "MOSEK",
+    "sdp_max_iters": 50000,
+    "sdp_eps": 1e-06,
+    "sdp_verbose": false,
+    "oa_solver": "GUROBI",
+    "oa_max_iters": 60,
+    "oa_tol": 1e-06,
+    "oa_verbose": false,
+    "oa_warm_start_fvg": true
+  },
+  "runtime_provenance": "Historical SeaWulf exclusive-node measurements; not the matched one-thread BB-RL/MAC run. The archived raw metadata does not record an allocation or timestamp, so none is inferred here.",
+  "provenance": {
+    "original_source": "baseline/logs/baseline_comparison_new/eval_big_type123_raw_exclusive.csv",
+    "original_raw_sha256": "39726971f6c519ddb532100f34aa4491660e2502bf9d4bd89746f89d65eae7c7",
+    "original_metadata_sha256": "bf6e3833037a47031d3f1c1dac6132880a8f5e23db430f0ec2403364178c5e5c",
+    "transformations": [
+      "Remove historical MAC rows, which are replaced by the fresh matched MAC run.",
+      "Retain only FVG, MDMD, WTS, k-opt, SDP-step, and OA-PMC.",
+      "Map method and method_label to publication labels; retain every other field string and original row order."
+    ]
+  },
+  "public_artifact_sha256": {
+    "raw.csv": "dc58b92fdd2a4ccb610309fa89191ab87728d906134cebb72a4e02c60a7fb2f7"
+  }
+}

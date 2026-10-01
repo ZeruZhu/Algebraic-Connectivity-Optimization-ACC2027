@@ -1,0 +1,152 @@
+{
+  "src/graph_design/config.py": {
+    "source": "src/graph_design/config.py",
+    "source_sha256": "126358deacb3aa9faf76fff70426b3a0175a2b4338ddfab8194d34017bc6d60a",
+    "release_sha256": "6d5f509d71155ce4c4345dfb45f428d9f664ece6cafd3dbbfda0a11d90d2a2ce",
+    "unchanged": false
+  },
+  "src/graph_design/routing.py": {
+    "source": "src/graph_design/routing.py",
+    "source_sha256": "d19a926574c62eddd713203ba91fb7e05660bfd53e807f7f64148f1b22ba1b81",
+    "release_sha256": "d19a926574c62eddd713203ba91fb7e05660bfd53e807f7f64148f1b22ba1b81",
+    "unchanged": true
+  },
+  "src/graph_design/types.py": {
+    "source": "src/graph_design/types.py",
+    "source_sha256": "527e6213dd70388c424e56f5a94a7fe9d2697c80a33907c34a6dc9aefc925d47",
+    "release_sha256": "2867356f47256d18a11a5e12a17037bc757876ee0cc9195192f78a551d20109d",
+    "unchanged": false
+  },
+  "src/graph_design/utils.py": {
+    "source": "src/graph_design/utils.py",
+    "source_sha256": "07f6432a130bde60208e6e7f1c326fda6b25984069af63e6db5f8c81bd887b50",
+    "release_sha256": "07f6432a130bde60208e6e7f1c326fda6b25984069af63e6db5f8c81bd887b50",
+    "unchanged": true
+  },
+  "src/graph_design/backbones/__init__.py": {
+    "source": "src/graph_design/backbones/__init__.py",
+    "source_sha256": "376d2924a0a0eb15cef8123525605582fdf0b8bcc0530afe6c484b71b087387d",
+    "release_sha256": "376d2924a0a0eb15cef8123525605582fdf0b8bcc0530afe6c484b71b087387d",
+    "unchanged": true
+  },
+  "src/graph_design/backbones/base.py": {
+    "source": "src/graph_design/backbones/base.py",
+    "source_sha256": "741f9c446872b73c4527e22fbae7b919510e43401e38924c7bec4287f48c78f1",
+    "release_sha256": "741f9c446872b73c4527e22fbae7b919510e43401e38924c7bec4287f48c78f1",
+    "unchanged": true
+  },
+  "src/graph_design/backbones/cayley.py": {
+    "source": "src/graph_design/backbones/cayley.py",
+    "source_sha256": "59c9f9147dcc46d8873c9de41f526af6556fd3a679587d6e987f0d30d082f4e6",
+    "release_sha256": "237d9e604d9b31a09a92cec9d9034ac386643354e5c08df7a1a945dab79431f8",
+    "unchanged": false
+  },
+  "src/graph_design/backbones/cayley_fft_delete.py": {
+    "source": "src/graph_design/backbones/cayley_fft_delete.py",
+    "source_sha256": "59c323cd1a2515e964f82c8798630f2b371c5e500ac66e06fba0229e861e268a",
+    "release_sha256": "59c323cd1a2515e964f82c8798630f2b371c5e500ac66e06fba0229e861e268a",
+    "unchanged": true
+  },
+  "src/graph_design/backbones/envelope.py": {
+    "source": "src/graph_design/backbones/envelope.py",
+    "source_sha256": "4eff1b9ae7b3576f82694f25ad3821649fe66c82b13bee8916ce0f8d4d224d30",
+    "release_sha256": "4eff1b9ae7b3576f82694f25ad3821649fe66c82b13bee8916ce0f8d4d224d30",
+    "unchanged": true
+  },
+  "src/graph_design/__init__.py": {
+    "source": "src/graph_design/__init__.py",
+    "source_sha256": "042c32d1cd3ab77c248568cd9bf41850aec80be92bd79921a462de8d78675a72",
+    "release_sha256": "3046dd8903f095560ad1e2da52f6a03c00b7ec600a9c56f6e9ad021e65ded864",
+    "unchanged": false
+  },
+  "rl_train/graph_math.py": {
+    "source": "rl_train/graph_math.py",
+    "source_sha256": "8dfba1edb3f07a66c861ae4d81da72774916f3e07cce1d81b586147752314910",
+    "release_sha256": "8dfba1edb3f07a66c861ae4d81da72774916f3e07cce1d81b586147752314910",
+    "unchanged": true
+  },
+  "rl_train/curriculum.py": {
+    "source": "rl_train/curriculum.py",
+    "source_sha256": "8b0ff0e0749ba4a0f3327f4e8fac5e6724cdd4f966df6d57df440d91a4258361",
+    "release_sha256": "8b0ff0e0749ba4a0f3327f4e8fac5e6724cdd4f966df6d57df440d91a4258361",
+    "unchanged": true
+  },
+  "rl_train/checkpoint.py": {
+    "source": "rl_train/checkpoint.py",
+    "source_sha256": "51c45ab555fb9582368b771a27e5e38d414fde44b6266f92255192de770a3098",
+    "release_sha256": "51c45ab555fb9582368b771a27e5e38d414fde44b6266f92255192de770a3098",
+    "unchanged": true
+  },
+  "rl_train/determinism.py": {
+    "source": "rl_train/determinism.py",
+    "source_sha256": "573105c77bc890deaad0e1660ed7d7432c544b5293c998c09b3fd575049ef003",
+    "release_sha256": "573105c77bc890deaad0e1660ed7d7432c544b5293c998c09b3fd575049ef003",
+    "unchanged": true
+  },
+  "rl_train/backbone_init.py": {
+    "source": "rl_train/backbone_init.py",
+    "source_sha256": "bdc530dad4db763fbf73aa1a2e39917604838512156124601769512d1fda6487",
+    "release_sha256": "bdc530dad4db763fbf73aa1a2e39917604838512156124601769512d1fda6487",
+    "unchanged": true
+  },
+  "rl_train/features/candidates.py": {
+    "source": "rl_train/features/lite_v3.py",
+    "source_sha256": "e2873883d3246bab861b9a1cda11e8a463062e77760295ab53bd52b5c93580cb",
+    "release_sha256": "049451b424549dcbdefd17f367499d07dfa0c321bd313086a8c30c86d8dee51e",
+    "unchanged": false
+  },
+  "rl_train/features/structural.py": {
+    "source": "rl_train/features/lite.py",
+    "source_sha256": "a7530ebaa5f298fa22d9b61b468f817b103b70c6d0df9004395277a9e7be4ef4",
+    "release_sha256": "26936c308b6e8a8552a3297194dc7c357113e2e91bb9ce9d1557c308de858f4e",
+    "unchanged": false
+  },
+  "rl_train/model.py": {
+    "source": "rl_train/model.py",
+    "source_sha256": "c3b5c3d187a5fec68fc00cac875992281ec93807bf188eb3eadee73e8efaed90",
+    "release_sha256": "257b829faddf3f74dd8f263dcf6e0f635ff19863137991297b0fc1e6dac57e2f",
+    "unchanged": false
+  },
+  "rl_train/env.py": {
+    "source": "rl_train/env.py",
+    "source_sha256": "974d6420d21fd21eb106fbf56356556ffc3127989b8023721f35a868b0ca2cbb",
+    "release_sha256": "71dfd518f803c2a8626b12894a9511cf0eee10e42924d6de376534af87b8a83f",
+    "unchanged": false
+  },
+  "rl_train/ppo.py": {
+    "source": "rl_train/ppo.py",
+    "source_sha256": "76059f1a1c8ccf61d31d82843eec17ff58443a7844298285c1fa09e43f5a0f99",
+    "release_sha256": "2935d862f4f6a1be0b842c9312c9b0707a19067606b85461e723a4f926012347",
+    "unchanged": false
+  },
+  "configs/bbrl.yaml": {
+    "source": "configs/rl_lite_v3_large_n_backbone_distill_off_ablation.yaml",
+    "source_sha256": "4429cc1db38120d8c9d14762a31d192ca05e95a010b72cb4caf3b02c990ce662",
+    "release_sha256": "f813c7e2ed8baca89e6d9302ba69798fc1a7173d9cc91e25748814835244b685",
+    "unchanged": false
+  },
+  "checkpoints/bbrl.pt": {
+    "source": "experiments/rl/runs/lite_v3_large_n_backbone_distill_off_ablation/checkpoints/best.pt",
+    "source_sha256": "90ace2cca8cfc449486dd36161f82cb3f5797adf32873e0696c51d8a7721dfa8",
+    "release_sha256": "90ace2cca8cfc449486dd36161f82cb3f5797adf32873e0696c51d8a7721dfa8",
+    "unchanged": true
+  },
+  "rl_train/config.py": {
+    "source": "rl_train/config.py",
+    "source_sha256": "2d252a4f954b4807af6e35b1df6fcc537260b3682ecc058f5c0d1427de65e6b8",
+    "release_sha256": "4ba406ef14a2c0203b8d35ad9d1ac40e8afc90acd579400b1e109a6778f81d89",
+    "unchanged": false
+  },
+  "rl_train/inference.py": {
+    "source": "rl_train/evaluate.py",
+    "source_sha256": "d886b4036f68fabd0953c1e900dcaee6c940beb0091a98b11cd198e497a660c9",
+    "release_sha256": "8cb67e5dace70db679bb60037657c96e3822c4601e7073d771e991f5e2961dbb",
+    "unchanged": false
+  },
+  "rl_train/train_bbrl.py": {
+    "source": "rl_train/train.py",
+    "source_sha256": "6f7b4d91aa5478121050354641aa776d8b73ea1579ac3e6119be8c279249baeb",
+    "release_sha256": "36e3ab817f42b6f6f3dfd55f5945ba28ce1277b6abfb2e5e27c4c3af5c2e4344",
+    "unchanged": false
+  }
+}
